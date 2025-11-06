@@ -17,7 +17,7 @@ from email.mime.multipart import MIMEMultipart
 from jinja2 import Template
 import firebase_admin
 from firebase_admin import credentials, firestore, auth
-from config import get_deep_link_base, get_base_url, get_token_expiration, get_current_network
+from config import get_deep_link_base, get_base_url, get_token_expiration, get_current_network, print_network_info
 
 load_dotenv()
 
@@ -69,6 +69,7 @@ class ConfirmPasswordResetResponse(BaseModel):
 GMAIL_SENDER_EMAIL = os.getenv("GMAIL_SENDER_EMAIL", "tu-correo@gmail.com")
 GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD", "tu-password")
 
+print_network_info()
 base_url, network_name = get_base_url()
 DEEP_LINK_BASE = get_deep_link_base()
 TOKEN_EXPIRATION_MINUTES = get_token_expiration()
