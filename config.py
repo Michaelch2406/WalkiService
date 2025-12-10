@@ -36,6 +36,9 @@ PORT = int(os.getenv("API_PORT", 8000))
 TOKEN_EXPIRATION = int(os.getenv("TOKEN_EXPIRATION_MINUTES", 15))
 DEFAULT_NETWORK = os.getenv("DEFAULT_NETWORK", "CASA")
 APP_ENV = os.getenv("APP_ENV", "DEV") # Por defecto a DEV si no está definida
+# Overrides opcionales para enlaces externos (no rompen la detección actual)
+PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL")
+DEEP_LINK_BASE_ENV = os.getenv("DEEP_LINK_BASE")
 
 def get_public_ip() -> Optional[str]:
     """
@@ -300,6 +303,47 @@ def get_current_network() -> Tuple[str, str]:
         return first_network, NETWORKS[first_network]["ip"]
 
 
+def detect_tailscale_ip() -> Optional[str]:
+    """
+    Intentar detectar la IP de Tailscale (rango 100.x.x.x) recorriendo interfaces conocidas.
+    Usa psutil o netifaces si estan disponibles; si no, retorna None.
+    """
+    prefixes = ("tailscale", "ts", "tun")
+
+    try:
+        import psutil  # type: ignore
+        for name, addrs in psutil.net_if_addrs().items():
+            lname = name.lower()
+            if not any(lname.startswith(p) for p in prefixes):
+                continue
+            for addr in addrs:
+                if getattr(addr, "family", None) == socket.AF_INET:
+                    ip = getattr(addr, "address", "")
+                    if ip and ip.startswith("100."):
+                        return ip
+    except ImportError:
+        pass
+    except Exception as e:
+        print(f"Warning: No se pudo detectar Tailscale via psutil: {e}")
+
+    try:
+        import netifaces  # type: ignore
+        for name in netifaces.interfaces():
+            lname = name.lower()
+            if not any(lname.startswith(p) for p in prefixes):
+                continue
+            addrs = netifaces.ifaddresses(name).get(netifaces.AF_INET, [])
+            for addr in addrs:
+                ip = addr.get("addr")
+                if ip and ip.startswith("100."):
+                    return ip
+    except ImportError:
+        pass
+    except Exception as e:
+        print(f"Warning: No se pudo detectar Tailscale via netifaces: {e}")
+
+    return None
+
 def get_base_url() -> Tuple[str, str]:
     """
     Obtener URL base automáticamente.
@@ -307,6 +351,15 @@ def get_base_url() -> Tuple[str, str]:
     Returns:
         Tuple[str, str]: (url_completa, nombre_de_red)
     """
+    # Permite forzar una URL pública (ej. Tailscale, dominio o ngrok) sin modificar la
+    # detección por red local. Ej: PUBLIC_BASE_URL=http://100.x.x.x:8000
+    if PUBLIC_BASE_URL:
+        return PUBLIC_BASE_URL, "PUBLIC_BASE_URL"
+
+    ts_ip = detect_tailscale_ip()
+    if ts_ip:
+        return f"http://{ts_ip}:{PORT}", "TAILSCALE"
+
     network_name, ip = get_current_network()
     url = f"http://{ip}:{PORT}"
     return url, network_name
@@ -319,6 +372,10 @@ def get_deep_link_base() -> str:
     Returns:
         str: URL completa para reset password
     """
+    # Permite fijar el deep link completo (ej. https://mi-dominio/reset-password)
+    if DEEP_LINK_BASE_ENV:
+        return DEEP_LINK_BASE_ENV
+
     url, _ = get_base_url()
     return f"{url}/reset-password"
 

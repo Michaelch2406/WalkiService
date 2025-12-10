@@ -18,6 +18,7 @@ from jinja2 import Template
 import firebase_admin
 from firebase_admin import credentials, firestore, auth
 from config import get_deep_link_base, get_base_url, get_token_expiration, get_current_network, print_network_info
+from llm_service import get_llm_response
 
 load_dotenv()
 
@@ -63,6 +64,10 @@ class ConfirmPasswordResetResponse(BaseModel):
     success: bool
     message: str
     timestamp: datetime
+
+class ChatRequest(BaseModel):
+    message: str
+    model: str = "llama3"
 
 # ========== CONFIGURACIÓN AUTO-DETECTADA ==========
 
@@ -241,6 +246,17 @@ async def root():
 @app.get("/health")
 async def health():
     return {"status": "OK"}
+
+@app.post("/api/chat")
+async def chat(payload: ChatRequest):
+    """Endpoint que usa Ollama"""
+    result = get_llm_response(payload.message, payload.model)
+    if isinstance(result, str) and result.startswith("Error:"):
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"success": False, "error": result}
+        )
+    return {"response": result, "model": payload.model}
 
 @app.post("/api/v1/auth/request-password-reset", response_model=RequestPasswordResetResponse)
 async def request_password_reset(request: RequestPasswordResetRequest):
